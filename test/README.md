@@ -2,7 +2,7 @@
 
 This folder contains everything needed to test the sidecar locally. It spins up three containers:
 - **rabbitmq** — the message broker the sidecar sends heartbeats to
-- **target** — a dummy nginx container that the sidecar monitors (just needs an open TCP port)
+- **nginx-target** — a dummy nginx container that the sidecar monitors (just needs an open TCP port)
 - **sidecar** — the actual service being tested
 
 ---
@@ -26,7 +26,7 @@ docker compose -f docker-compose.test.yml up --build
 Docker will:
 1. Build the sidecar image
 2. Start RabbitMQ (takes ~20 seconds to be fully ready)
-3. Start nginx (target)
+3. Start nginx (nginx-target)
 4. Start the sidecar once RabbitMQ is healthy
 
 You will see output from all three containers. When you see `Verbonden met RabbitMQ`, the sidecar is running and sending heartbeats.
@@ -57,25 +57,25 @@ Press `CTRL+C` to stop the consumer.
 
 ---
 
-## Step 3 (optional) — Test what happens when the target goes down
+## Step 3 (optional) — Test what happens when the nginx-target goes down
 
-In a **third terminal**, stop the target container:
+In a **third terminal**, stop the nginx-target container:
 
 ```
-docker compose -f docker-compose.test.yml stop target
+docker compose -f docker-compose.test.yml stop nginx-target
 ```
 
 In the first terminal (compose logs) you will see:
 ```
-[DOWN] test-system niet bereikbaar: target:80
+[DOWN] test-system niet bereikbaar: nginx-target:80
 ```
 
 The consumer will stop receiving messages. The `uptime` counter resets to 0.
 
-Bring the target back up:
+Bring the nginx-target back up:
 
 ```
-docker compose -f docker-compose.test.yml start target
+docker compose -f docker-compose.test.yml start nginx-target
 ```
 
 Messages resume within a second, with `<uptime>1</uptime>`.
