@@ -10,13 +10,14 @@ Voeg de volgende service toe aan jullie `docker-compose.yml`:
 
 ```yaml
 sidecar:
-  image: ghcr.io/integrationproject-groep1/heartbeat-sidecar:latest
+  image: ghcr.io/integrationproject-groep1/heartbeat:latest
   environment:
     - SYSTEM_NAME=jullie-systeem-naam
     - TARGETS=jullie-container-naam:80
-    - RABBITMQ_HOST=rabbitmq
+    - RABBITMQ_HOST=rabbitmq_broker
     - RABBITMQ_USER=<gebruikersnaam>
     - RABBITMQ_PASS=<wachtwoord>
+    - RABBITMQ_VHOST=/
   depends_on:
     - jullie-container-naam
     - rabbitmq
@@ -36,9 +37,10 @@ sidecar:
 |----------|-----------|--------------|
 | `SYSTEM_NAME` | ja | Unieke naam voor jullie systeem (bijv. `facturatie`, `crm`, `planning`) |
 | `TARGETS` | ja | Komma-gescheiden lijst van `container-naam:poort` paren om te bewaken |
-| `RABBITMQ_HOST` | ja | Hostnaam van RabbitMQ (in de gedeelde omgeving: `rabbitmq`) |
+| `RABBITMQ_HOST` | ja | Hostnaam van RabbitMQ (in de gedeelde omgeving: `rabbitmq_broker`) |
 | `RABBITMQ_USER` | ja | RabbitMQ gebruikersnaam (wordt door Tom meegegeven) |
 | `RABBITMQ_PASS` | ja | RabbitMQ wachtwoord (wordt door Tom meegegeven) |
+| `RABBITMQ_VHOST` | nee | RabbitMQ virtual host (standaard: `/`) |
 
 ---
 
@@ -51,10 +53,4 @@ sidecar:
 
 ## Image updates
 
-Het image wordt automatisch gepubliceerd via GitHub Actions bij elke push naar `main`. Jullie hoeven zelf geen code te kopiëren of bij te houden.
-
-Nieuwe versie ophalen:
-```bash
-docker compose pull
-docker compose up -d
-```
+Het image wordt automatisch gebouwd en gepubliceerd via GitHub Actions bij elke nieuwe release (tag). Team Infrastructuur beheert de deployments op de VM via Watchtower — nieuwe versies worden automatisch opgepikt en uitgerold. Jullie hoeven hier zelf niets voor te doen.

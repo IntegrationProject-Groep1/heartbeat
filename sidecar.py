@@ -11,6 +11,7 @@ TARGETS_RAW = os.environ.get("TARGETS", "")
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER")
 RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS")
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
 
 if not all([SYSTEM_NAME, TARGETS_RAW, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS]):
     print("FOUT: stel alle environment variables in")
@@ -59,7 +60,7 @@ def connect_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
+                pika.ConnectionParameters(host=RABBITMQ_HOST, virtual_host=RABBITMQ_VHOST, credentials=credentials)
             )
             channel = connection.channel()
             channel.queue_declare(queue="heartbeat", durable=True)
