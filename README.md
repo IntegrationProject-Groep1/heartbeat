@@ -1,4 +1,4 @@
-# Heartbeat Sidecar — Instructies voor andere teams
+# Heartbeat Sidecar - Instructies voor andere teams
 
 De sidecar bewaakt of jullie containers bereikbaar zijn en stuurt elke seconde een heartbeat naar RabbitMQ. Het monitoringteam verwerkt deze berichten en toont de status in Kibana.
 
@@ -15,8 +15,8 @@ sidecar:
     - SYSTEM_NAME=jullie-systeem-naam
     - TARGETS=jullie-container-naam:80
     - RABBITMQ_HOST=rabbitmq
-    - RABBITMQ_USER=monitoring
-    - RABBITMQ_PASS=monitoring123
+    - RABBITMQ_USER=gebruiker
+    - RABBITMQ_PASS=wachtwoord
   depends_on:
     - jullie-container-naam
     - rabbitmq
