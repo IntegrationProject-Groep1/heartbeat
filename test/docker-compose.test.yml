@@ -1,0 +1,36 @@
+services:
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: testuser
+      RABBITMQ_DEFAULT_PASS: testpass
+    ports:
+      - "5672:5672"    # AMQP - used by consumer.py running on the host
+      - "15672:15672"  # Management UI - open in browser to watch the queue
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  target:
+    image: nginx:alpine
+    # nginx listens on port 80 by default - the sidecar checks this port via TCP
+
+  sidecar:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      SYSTEM_NAME: test-system
+      TARGETS: target:80
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: testuser
+      RABBITMQ_PASS: testpass
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      target:
+        condition: service_started
