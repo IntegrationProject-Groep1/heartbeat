@@ -1,4 +1,5 @@
 import socket
+import ipaddress
 import time
 import os
 import sys
@@ -11,6 +12,7 @@ TARGETS_RAW = os.environ.get("TARGETS", "")
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER")
 RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS")
+RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
 
 if not all([SYSTEM_NAME, TARGETS_RAW, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS]):
     print("FOUT: stel alle environment variables in")
@@ -30,6 +32,9 @@ uptime_seconds = 0
 
 def is_alive(host, port, timeout=2):
     try:
+        ip = socket.getaddrinfo(host, port, socket.AF_INET)[0][4][0]
+        if not ipaddress.ip_address(ip).is_private:
+            return False
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except (socket.timeout, ConnectionRefusedError, OSError):
@@ -59,7 +64,7 @@ def connect_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
+                pika.ConnectionParameters(host=RABBITMQ_HOST, virtual_host=RABBITMQ_VHOST, credentials=credentials)
             )
             channel = connection.channel()
             channel.queue_declare(queue="heartbeat", durable=True)
