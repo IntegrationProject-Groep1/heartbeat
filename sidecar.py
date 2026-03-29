@@ -1,4 +1,5 @@
 import socket
+import ipaddress
 import time
 import os
 import sys
@@ -31,6 +32,9 @@ uptime_seconds = 0
 
 def is_alive(host, port, timeout=2):
     try:
+        ip = socket.getaddrinfo(host, port, socket.AF_INET)[0][4][0]
+        if not ipaddress.ip_address(ip).is_private:
+            return False
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except (socket.timeout, ConnectionRefusedError, OSError):
