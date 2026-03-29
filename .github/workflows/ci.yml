@@ -1,0 +1,30 @@
+name: CI Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on new release tags (e.g., v1.0.1)
+    branches:
+      - main
+      - master
+      - prod
+      - production # Trigger on push or merge to any production branch
+  pull_request:
+    branches:
+      - main
+      - master
+      - prod
+
+jobs:
+  test:
+    name: Run Automated Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: |
+          echo "Executing test suite..."
+          # Teams: Add your specific test commands here (e.g., npm test, pytest)
+          exit 0
