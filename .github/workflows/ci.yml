@@ -2,29 +2,40 @@ name: CI Pipeline
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on new release tags (e.g., v1.0.1)
-    branches:
-      - main
-      - master
-      - prod
-      - production # Trigger on push or merge to any production branch
+    branches: [ "main", "dev", "prod" ]
+    tags: [ "v*" ]
   pull_request:
-    branches:
-      - main
-      - master
-      - prod
+    branches: [ "main", "dev", "prod" ]
 
 jobs:
   test:
-    name: Run Automated Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Tests
+      - name: Start test environment
+        run: docker compose -f test/docker-compose.test.yml up --build -d
+
+      - name: Wait for heartbeat messages in queue
         run: |
-          echo "Executing test suite..."
-          # Teams: Add your specific test commands here (e.g., npm test, pytest)
-          exit 0
+          echo "Waiting for sidecar to publish heartbeat messages..."
+          for i in $(seq 1 30); do
+            MESSAGES=$(curl -s -u testuser:testpass \
+              http://localhost:15672/api/queues/%2F/heartbeat \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('messages_ready', 0))" \
+              2>/dev/null || echo 0)
+            if [ "$MESSAGES" -gt "0" ]; then
+              echo "OK: $MESSAGES heartbeat message(s) in queue."
+              exit 0
+            fi
+            echo "Attempt $i/30: no messages yet, waiting 3s..."
+            sleep 3
+          done
+          echo "FAIL: no heartbeat messages received within 90 seconds."
+          docker compose -f test/docker-compose.test.yml logs
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f test/docker-compose.test.yml down
