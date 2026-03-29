@@ -17,8 +17,10 @@ if not all([SYSTEM_NAME, TARGETS_RAW, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PAS
     sys.exit(1)
 
 try:
-    TARGETS = [(t.strip().split(":")[0], int(t.strip().split(":")[1]))
-               for t in TARGETS_RAW.split(",")]
+    TARGETS = []
+    for t in TARGETS_RAW.split(","):
+        host, port_str = t.strip().rsplit(":", 1)
+        TARGETS.append((host, int(port_str)))
 except (ValueError, IndexError):
     print("FOUT: TARGETS heeft een ongeldig formaat. Verwacht: host:port[,host:port,...]")
     sys.exit(1)
