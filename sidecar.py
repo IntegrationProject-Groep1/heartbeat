@@ -6,6 +6,7 @@ import sys
 import pika
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from lxml import etree
 
 SYSTEM_NAME = os.environ.get("SYSTEM_NAME")
 TARGETS_RAW = os.environ.get("TARGETS", "")
@@ -13,6 +14,7 @@ RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
 RABBITMQ_USER = os.environ.get("RABBITMQ_USER")
 RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS")
 RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+XSD_PATH = "heartbeat.xsd"
 
 if not all([SYSTEM_NAME, TARGETS_RAW, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS]):
     print("FOUT: stel alle environment variables in")
@@ -29,6 +31,22 @@ except (ValueError, IndexError):
 
 uptime_seconds = 0
 
+def validate_xml(xml_string):
+    try:
+	if not os.path.exists(XSD_PATH):
+	    print(f"Waarschuwing: {XSD_PATH} niet gevonden. Validatie overgeslagen.")
+	    return True
+
+	with open(XSD_PATH, 'rb') as f:
+	    schema_root = etree.XML(f.read())
+	    schema = etree.XMLSchema(schema_root)
+
+	xml_doc = etree.fromstring(xml_string.encode('utf-8'))
+	schema.assertValid(xml_doc)
+	return True
+    except Exception as e:
+	print(f"XSD Validatie fout: {e}")
+	return False
 
 def is_alive(host, port, timeout=2):
     try:
@@ -85,23 +103,25 @@ while True:
     if all_alive(TARGETS):
         uptime_seconds += 1
         xml = build_heartbeat_xml(SYSTEM_NAME, uptime_seconds)
-        try:
-            channel.basic_publish(
-                exchange="",
-                routing_key="heartbeat",
-                body=xml,
-                properties=pika.BasicProperties(delivery_mode=2)
-            )
-        except pika.exceptions.AMQPError:
-            print("RabbitMQ verbinding verloren, opnieuw verbinden")
-            try:
-                connection.close()
-            except Exception as e:
-                print(f"Fout bij sluiten van RabbitMQ verbinding: {e}")
-            connection, channel = connect_rabbitmq()
-    else:
-        uptime_seconds = 0
 
-    work_duration = time.monotonic() - start_time
-    if work_duration < 1:
-        time.sleep(1 - work_duration)
+	if validate_xml(xml_data):
+            try:
+                channel.basic_publish(
+                    exchange="",
+                    routing_key="heartbeat",
+                    body=xml,
+                    properties=pika.BasicProperties(delivery_mode=2)
+                )
+           except pika.exceptions.AMQPError:
+               print("RabbitMQ verbinding verloren, opnieuw verbinden")
+               try:
+                   connection.close()
+               except Exception as e:
+                   print(f"Fout bij sluiten van RabbitMQ verbinding: {e}")
+               connection, channel = connect_rabbitmq()
+       else:
+            uptime_seconds = 0
+
+       work_duration = time.monotonic() - start_time
+       if work_duration < 1:
+           time.sleep(1 - work_duration)
