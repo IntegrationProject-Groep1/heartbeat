@@ -1,12 +1,12 @@
-# Heartbeat Sidecar - Instructies voor andere teams
+# Heartbeat Sidecar - Instructions for other teams
 
-De sidecar bewaakt of jullie containers bereikbaar zijn en stuurt elke seconde een heartbeat naar RabbitMQ. Het monitoringteam verwerkt deze berichten en toont de status in Kibana.
+The sidecar monitors whether your containers are reachable and sends a heartbeat to RabbitMQ every second. The monitoring team processes these messages and displays the status in Kibana.
 
 ---
 
-## Wat jullie moeten doen
+## What you need to do
 
-Voeg de volgende service toe aan jullie `docker-compose.yml`:
+Add the following service to your `docker-compose.yml`:
 
 ```yaml
 sidecar:
@@ -23,34 +23,34 @@ sidecar:
     - rabbitmq
 ```
 
-> **Meerdere containers bewaken?** Geef ze allemaal op in `TARGETS`, gescheiden door een komma:
+> **Monitoring multiple containers?** Specify all of them in `TARGETS`, separated by a comma:
 > ```
 > TARGETS=api:8080,worker:9000,database:5432
 > ```
-> Als één container niet bereikbaar is, stopt de sidecar met het sturen van heartbeats voor het hele systeem.
+> If even one container is unreachable, the sidecar will stop sending heartbeats for the entire system.
 
 ---
 
 ## Environment variables
 
-| Variable | Verplicht | Beschrijving |
+| Variable | Required | Description |
 |----------|-----------|--------------|
-| `SYSTEM_NAME` | ja | Unieke naam voor jullie systeem (bijv. `facturatie`, `crm`, `planning`) |
-| `TARGETS` | ja | Komma-gescheiden lijst van `container-naam:poort` paren om te bewaken |
-| `RABBITMQ_HOST` | ja | Hostnaam van RabbitMQ (in de gedeelde omgeving: `rabbitmq_broker`) |
-| `RABBITMQ_USER` | ja | RabbitMQ gebruikersnaam (wordt door Tom meegegeven) |
-| `RABBITMQ_PASS` | ja | RabbitMQ wachtwoord (wordt door Tom meegegeven) |
-| `RABBITMQ_VHOST` | nee | RabbitMQ virtual host (standaard: `/`) |
+| `SYSTEM_NAME` | yes | Unique name for your system (e.g. `facturatie`, `crm`, `planning`) |
+| `TARGETS` | yes | Comma-separated list of `container-naam:poort` pairs to monitor |
+| `RABBITMQ_HOST` | yes | Hostname of RabbitMQ (in the shared environment: `rabbitmq_broker`) |
+| `RABBITMQ_USER` | yes | RabbitMQ username (provided by Tom) |
+| `RABBITMQ_PASS` | yes | RabbitMQ password (provided by Tom) |
+| `RABBITMQ_VHOST` | no | RabbitMQ virtual host (default: `/`) |
 
 ---
 
-## Vereisten
+## Requirements
 
-- Elke container die jullie opgeven in `TARGETS` moet een **bereikbare TCP-poort** hebben.
-- De sidecar-container moet op **hetzelfde Docker-netwerk** zitten als jullie app-containers en RabbitMQ.
+- Every container specified in `TARGETS` must have a **reachable TCP port**.
+- he sidecar container must be on the **same Docker network** as your app containers and RabbitMQ.
 
 ---
 
 ## Image updates
 
-Het image wordt automatisch gebouwd en gepubliceerd via GitHub Actions bij elke nieuwe release (tag). Team Infrastructuur beheert de deployments op de VM via Watchtower — nieuwe versies worden automatisch opgepikt en uitgerold. Jullie hoeven hier zelf niets voor te doen.
+The image is automatically built and published via GitHub Actions with every new release (tag). The Infrastructure Team manages deployments on the VM via Watchtower — new versions are automatically picked up and rolled out. You do not need to take any action for this yourselves.
