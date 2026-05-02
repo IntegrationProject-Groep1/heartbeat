@@ -18,6 +18,7 @@ jobs:
         run: |
           pip install lxml --quiet
           python3 - <<'EOF'
+          import uuid
           from lxml import etree
           from xml.etree.ElementTree import Element, SubElement, tostring
           from datetime import datetime, timezone
@@ -26,11 +27,17 @@ jobs:
               schema = etree.XMLSchema(etree.XML(f.read()))
 
           timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-          heartbeat = Element("heartbeat")
-          SubElement(heartbeat, "system").text = "test-system"
-          SubElement(heartbeat, "timestamp").text = timestamp
-          SubElement(heartbeat, "uptime").text = "1"
-          xml_string = tostring(heartbeat, encoding="unicode")
+          message = Element("message")
+          header = SubElement(message, "header")
+          SubElement(header, "message_id").text = str(uuid.uuid4())
+          SubElement(header, "timestamp").text = timestamp
+          SubElement(header, "source").text = "test-system"
+          SubElement(header, "type").text = "heartbeat"
+          SubElement(header, "version").text = "2.0"
+          body = SubElement(message, "body")
+          SubElement(body, "status").text = "online"
+          SubElement(body, "uptime").text = "1"
+          xml_string = tostring(message, encoding="unicode")
 
           xml_doc = etree.fromstring(xml_string.encode("utf-8"))
           schema.assertValid(xml_doc)

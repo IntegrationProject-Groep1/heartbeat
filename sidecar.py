@@ -30,20 +30,20 @@ except (ValueError, IndexError):
     print("FOUT: TARGETS heeft een ongeldig formaat. Verwacht: host:port[,host:port,...]")
     sys.exit(1)
 
-uptime_seconds = 0
+alive_since = None
+
+if os.path.exists(XSD_PATH):
+    with open(XSD_PATH, 'rb') as _f:
+        _schema = etree.XMLSchema(etree.XML(_f.read()))
+else:
+    print(f"Waarschuwing: {XSD_PATH} niet gevonden. Validatie overgeslagen.")
+    _schema = None
 
 def validate_xml(xml_string):
+    if _schema is None:
+        return True
     try:
-        if not os.path.exists(XSD_PATH):
-            print(f"Waarschuwing: {XSD_PATH} niet gevonden. Validatie overgeslagen.")
-            return True
-
-        with open(XSD_PATH, 'rb') as f:
-            schema_root = etree.XML(f.read())
-            schema = etree.XMLSchema(schema_root)
-
-        xml_doc = etree.fromstring(xml_string.encode('utf-8'))
-        schema.assertValid(xml_doc)
+        _schema.assertValid(etree.fromstring(xml_string.encode('utf-8')))
         return True
     except Exception as e:
         print(f"XSD Validatie fout: {e}")
@@ -108,7 +108,7 @@ def publish(channel, xml):
     channel.basic_publish(
         exchange="",
         routing_key="heartbeat",
-        body=xml,
+        body=xml.encode('utf-8'),
         properties=pika.BasicProperties(delivery_mode=2)
     )
 
@@ -122,10 +122,12 @@ connection, channel = connect_rabbitmq()
 while True:
     start_time = time.monotonic()
     if all_alive(TARGETS):
-        uptime_seconds += 1
+        if alive_since is None:
+            alive_since = time.monotonic()
+        uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
     else:
-        uptime_seconds = 0
+        alive_since = None
         xml = build_heartbeat_xml(SYSTEM_NAME, "offline")
 
     if validate_xml(xml):
