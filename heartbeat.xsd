@@ -1,11 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="heartbeat">
+  <xs:element name="message">
     <xs:complexType>
       <xs:sequence>
-        <xs:element name="system" type="xs:string"/>
-        <xs:element name="timestamp" type="xs:dateTime"/>
-        <xs:element name="uptime" type="xs:integer"/>
+        <xs:element name="header">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="message_id" type="xs:string"/>
+              <xs:element name="timestamp"  type="xs:dateTime"/>
+              <xs:element name="source"     type="xs:string"/>
+              <xs:element name="type"       type="xs:string" fixed="heartbeat"/>
+              <xs:element name="version"    type="xs:string" fixed="2.0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="body">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="status">
+                <xs:simpleType>
+                  <xs:restriction base="xs:string">
+                    <xs:enumeration value="online"/>
+                    <xs:enumeration value="degraded"/>
+                    <xs:enumeration value="offline"/>
+                  </xs:restriction>
+                </xs:simpleType>
+              </xs:element>
+              <!-- uptime: optioneel — seconden dat het systeem bereikbaar is geweest -->
+              <xs:element name="uptime" type="xs:integer" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
     </xs:complexType>
   </xs:element>

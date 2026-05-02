@@ -3,6 +3,7 @@ import ipaddress
 import time
 import os
 import sys
+import uuid
 import pika
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -67,14 +68,24 @@ def all_alive(targets):
     return True
 
 
-def build_heartbeat_xml(system_name, uptime):
+def build_heartbeat_xml(system_name, status, uptime=None):
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    heartbeat = ET.Element("heartbeat")
-    ET.SubElement(heartbeat, "system").text = system_name
-    ET.SubElement(heartbeat, "timestamp").text = timestamp
-    ET.SubElement(heartbeat, "uptime").text = str(uptime)
-    return ET.tostring(heartbeat, encoding='unicode')
+    message = ET.Element("message")
+
+    header = ET.SubElement(message, "header")
+    ET.SubElement(header, "message_id").text = str(uuid.uuid4())
+    ET.SubElement(header, "timestamp").text = timestamp
+    ET.SubElement(header, "source").text = system_name
+    ET.SubElement(header, "type").text = "heartbeat"
+    ET.SubElement(header, "version").text = "2.0"
+
+    body = ET.SubElement(message, "body")
+    ET.SubElement(body, "status").text = status
+    if uptime is not None:
+        ET.SubElement(body, "uptime").text = str(uptime)
+
+    return ET.tostring(message, encoding='unicode')
 
 
 def connect_rabbitmq():
@@ -93,33 +104,40 @@ def connect_rabbitmq():
             time.sleep(5)
 
 
+def publish(channel, xml):
+    channel.basic_publish(
+        exchange="",
+        routing_key="heartbeat",
+        body=xml,
+        properties=pika.BasicProperties(delivery_mode=2)
+    )
+
+
 print(f"Sidecar gestart voor systeem: {SYSTEM_NAME}")
 print(f"Controleert: {', '.join(f'{h}:{p}' for h, p in TARGETS)}")
 
 connection, channel = connect_rabbitmq()
 
+
 while True:
     start_time = time.monotonic()
     if all_alive(TARGETS):
         uptime_seconds += 1
-        xml = build_heartbeat_xml(SYSTEM_NAME, uptime_seconds)
-        if validate_xml(xml):
-            try:
-                channel.basic_publish(
-                    exchange="",
-                    routing_key="heartbeat",
-                    body=xml,
-                    properties=pika.BasicProperties(delivery_mode=2)
-                )
-            except pika.exceptions.AMQPError:
-                print("RabbitMQ verbinding verloren, opnieuw verbinden")
-                try:
-                    connection.close()
-                except Exception as e:
-                    print(f"Fout bij sluiten van RabbitMQ verbinding: {e}")
-                connection, channel = connect_rabbitmq()
+        xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
     else:
         uptime_seconds = 0
+        xml = build_heartbeat_xml(SYSTEM_NAME, "offline")
+
+    if validate_xml(xml):
+        try:
+            publish(channel, xml)
+        except pika.exceptions.AMQPError:
+            print("RabbitMQ verbinding verloren, opnieuw verbinden")
+            try:
+                connection.close()
+            except Exception as e:
+                print(f"Fout bij sluiten van RabbitMQ verbinding: {e}")
+            connection, channel = connect_rabbitmq()
 
     work_duration = time.monotonic() - start_time
     if work_duration < 1:
