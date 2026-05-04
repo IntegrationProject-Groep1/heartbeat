@@ -68,7 +68,7 @@ def all_alive(targets):
     return True
 
 
-def build_heartbeat_xml(system_name, status, uptime=None):
+def build_heartbeat_xml(system_name, status, uptime):
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     message = ET.Element("message")
@@ -82,8 +82,7 @@ def build_heartbeat_xml(system_name, status, uptime=None):
 
     body = ET.SubElement(message, "body")
     ET.SubElement(body, "status").text = status
-    if uptime is not None:
-        ET.SubElement(body, "uptime").text = str(uptime)
+    ET.SubElement(body, "uptime").text = str(uptime)
 
     return ET.tostring(message, encoding='unicode')
 
@@ -128,7 +127,7 @@ while True:
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
     else:
         alive_since = None
-        xml = build_heartbeat_xml(SYSTEM_NAME, "offline")
+        xml = build_heartbeat_xml(SYSTEM_NAME, "offline", 0)
 
     if validate_xml(xml):
         try:
