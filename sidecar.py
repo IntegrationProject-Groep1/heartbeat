@@ -117,21 +117,32 @@ print(f"Controleert: {', '.join(f'{h}:{p}' for h, p in TARGETS)}")
 
 connection, channel = connect_rabbitmq()
 
+offline_notified = False
 
 while True:
     start_time = time.monotonic()
+    is_offline_heartbeat = False
     if all_alive(TARGETS):
         if alive_since is None:
             alive_since = time.monotonic()
+            offline_notified = False
         uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
+        should_publish = True
     else:
         alive_since = None
-        xml = build_heartbeat_xml(SYSTEM_NAME, "offline", 0)
+        if not offline_notified:
+            xml = build_heartbeat_xml(SYSTEM_NAME, "offline", 0)
+            should_publish = True
+            is_offline_heartbeat = True
+        else:
+            should_publish = False
 
-    if validate_xml(xml):
+    if should_publish and validate_xml(xml):
         try:
             publish(channel, xml)
+            if is_offline_heartbeat:
+                offline_notified = True
         except pika.exceptions.AMQPError:
             print("RabbitMQ verbinding verloren, opnieuw verbinden")
             try:
