@@ -121,25 +121,28 @@ offline_notified = False
 
 while True:
     start_time = time.monotonic()
+    is_offline_heartbeat = False
     if all_alive(TARGETS):
         if alive_since is None:
             alive_since = time.monotonic()
+            offline_notified = False
         uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
-        offline_notified = False
         should_publish = True
     else:
         alive_since = None
         if not offline_notified:
             xml = build_heartbeat_xml(SYSTEM_NAME, "offline", 0)
-            offline_notified = True
             should_publish = True
+            is_offline_heartbeat = True
         else:
             should_publish = False
 
     if should_publish and validate_xml(xml):
         try:
             publish(channel, xml)
+            if is_offline_heartbeat:
+                offline_notified = True
         except pika.exceptions.AMQPError:
             print("RabbitMQ verbinding verloren, opnieuw verbinden")
             try:
