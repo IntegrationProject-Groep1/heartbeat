@@ -31,7 +31,7 @@ except (ValueError, IndexError):
     sys.exit(1)
 
 alive_since = None
-OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", "/tmp/heartbeat_offline_notified")
+OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", f"/tmp/heartbeat_offline_{SYSTEM_NAME}")
 offline_notified = os.path.exists(OFFLINE_FLAG_FILE)
 
 if os.path.exists(XSD_PATH):
@@ -128,8 +128,10 @@ while True:
             offline_notified = False
             try:
                 os.remove(OFFLINE_FLAG_FILE)
-            except OSError:
+            except FileNotFoundError:
                 pass
+            except OSError as e:
+                print(f"Waarschuwing: Kon vlagbestand niet verwijderen: {e}")
         uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
         should_publish = True
