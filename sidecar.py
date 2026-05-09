@@ -148,10 +148,10 @@ while True:
         try:
             publish(channel, xml)
             if is_offline_heartbeat:
+                offline_notified = True
                 try:
                     with open(OFFLINE_FLAG_FILE, 'w') as f:
                         f.write('notified')
-                    offline_notified = True
                 except OSError as e:
                     print(f"Waarschuwing: Kon offline vlag niet schrijven: {e}")
         except pika.exceptions.AMQPError:
