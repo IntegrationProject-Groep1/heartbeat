@@ -31,7 +31,7 @@ except (ValueError, IndexError):
     sys.exit(1)
 
 alive_since = None
-OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", f"/tmp/heartbeat_offline_{SYSTEM_NAME}")
+OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", f"/tmp/heartbeat_offline_{os.path.basename(SYSTEM_NAME)}")
 offline_notified = os.path.exists(OFFLINE_FLAG_FILE)
 
 if os.path.exists(XSD_PATH):
