@@ -31,7 +31,7 @@ except (ValueError, IndexError):
     sys.exit(1)
 
 alive_since = None
-OFFLINE_FLAG_FILE = "/tmp/heartbeat_offline_notified"
+OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", "/tmp/heartbeat_offline_notified")
 offline_notified = os.path.exists(OFFLINE_FLAG_FILE)
 
 if os.path.exists(XSD_PATH):
@@ -126,8 +126,10 @@ while True:
         if alive_since is None:
             alive_since = time.monotonic()
             offline_notified = False
-            if os.path.exists(OFFLINE_FLAG_FILE):
+            try:
                 os.remove(OFFLINE_FLAG_FILE)
+            except OSError:
+                pass
         uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
         should_publish = True
@@ -145,8 +147,11 @@ while True:
             publish(channel, xml)
             if is_offline_heartbeat:
                 offline_notified = True
-                with open(OFFLINE_FLAG_FILE, 'w') as f:
-                    f.write('notified')
+                try:
+                    with open(OFFLINE_FLAG_FILE, 'w') as f:
+                        f.write('notified')
+                except OSError as e:
+                    print(f"Waarschuwing: Kon offline vlag niet schrijven: {e}")
         except pika.exceptions.AMQPError:
             print("RabbitMQ verbinding verloren, opnieuw verbinden")
             try:
