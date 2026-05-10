@@ -239,7 +239,7 @@ while running:
                 last_down_log_time = now
 
 
-    # Ensure strict 1-second interval
-    work_duration = time.monotonic() - start_time
     if work_duration < 1:
         time.sleep(1 - work_duration)
+
+pub_thread.join()
