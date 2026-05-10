@@ -35,13 +35,14 @@ jobs:
           SubElement(header, "type").text = "heartbeat"
           SubElement(header, "version").text = "2.0"
           body = SubElement(message, "body")
-          SubElement(body, "status").text = "online"
+          status_elem = SubElement(body, "status")
+          status_elem.text = "online"
           SubElement(body, "uptime").text = "1"
           xml_string = tostring(message, encoding="unicode")
           schema.assertValid(etree.fromstring(xml_string.encode("utf-8")))
 
           # Also test 'offline' status which is now used for SIGTERM
-          SubElement(body, "status").text = "offline"
+          status_elem.text = "offline"
           xml_string_offline = tostring(message, encoding="unicode")
           schema.assertValid(etree.fromstring(xml_string_offline.encode("utf-8")))
 

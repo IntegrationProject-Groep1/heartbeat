@@ -60,6 +60,7 @@ except (ValueError, IndexError):
 
 # Global State
 alive_since = None
+last_down_log_time = 0
 msg_queue = queue.Queue()
 running = True
 
@@ -231,9 +232,14 @@ while running:
         if alive_since is not None:
             logger.error(f"[DOWN] {SYSTEM_NAME} niet bereikbaar: {', '.join(failed_targets)}")
             alive_since = None
+            last_down_log_time = time.monotonic()
         else:
             # Still down: log locally but do not send XML to RabbitMQ (Dead Man's Switch)
-            logger.error(f"[STILL DOWN] Wacht op herstel: {', '.join(failed_targets)}")
+            now = time.monotonic()
+            if now - last_down_log_time >= 60:
+                logger.error(f"[STILL DOWN] Wacht op herstel: {', '.join(failed_targets)}")
+                last_down_log_time = now
+
 
     # Ensure strict 1-second interval
     work_duration = time.monotonic() - start_time
