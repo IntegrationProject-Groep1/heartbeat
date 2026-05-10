@@ -6,9 +6,37 @@ import sys
 import uuid
 import pika
 import xml.etree.ElementTree as ET
+import logging
+import json
+import signal
+import threading
+import queue
 from datetime import datetime, timezone
 from lxml import etree
 
+# --- Structured JSON Logging Setup ---
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "system": os.environ.get("SYSTEM_NAME", "unknown")
+        }
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(JsonFormatter())
+logger.addHandler(handler)
+
+# Suppress noisy pika logs
+logging.getLogger("pika").setLevel(logging.WARNING)
+
+# --- Configuration ---
 SYSTEM_NAME = os.environ.get("SYSTEM_NAME")
 TARGETS_RAW = os.environ.get("TARGETS", "")
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST")
@@ -18,7 +46,7 @@ RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
 XSD_PATH = "heartbeat.xsd"
 
 if not all([SYSTEM_NAME, TARGETS_RAW, RABBITMQ_HOST, RABBITMQ_USER, RABBITMQ_PASS]):
-    print("FOUT: stel alle environment variables in")
+    logger.error("FOUT: stel alle environment variables in")
     sys.exit(1)
 
 try:
@@ -27,18 +55,24 @@ try:
         host, port_str = t.strip().rsplit(":", 1)
         TARGETS.append((host, int(port_str)))
 except (ValueError, IndexError):
-    print("FOUT: TARGETS heeft een ongeldig formaat. Verwacht: host:port[,host:port,...]")
+    logger.error("FOUT: TARGETS heeft een ongeldig formaat. Verwacht: host:port[,host:port,...]")
     sys.exit(1)
 
+# Global State
 alive_since = None
-OFFLINE_FLAG_FILE = os.environ.get("OFFLINE_FLAG_FILE", f"/tmp/heartbeat_offline_{os.path.basename(SYSTEM_NAME)}")
-offline_notified = os.path.exists(OFFLINE_FLAG_FILE)
+msg_queue = queue.Queue()
+running = True
 
+# --- XSD Validation ---
 if os.path.exists(XSD_PATH):
-    with open(XSD_PATH, 'rb') as _f:
-        _schema = etree.XMLSchema(etree.XML(_f.read()))
+    try:
+        with open(XSD_PATH, 'rb') as _f:
+            _schema = etree.XMLSchema(etree.XML(_f.read()))
+    except Exception as e:
+        logger.error(f"Fout bij laden van XSD: {e}")
+        _schema = None
 else:
-    print(f"Waarschuwing: {XSD_PATH} niet gevonden. Validatie overgeslagen.")
+    logger.warning(f"{XSD_PATH} niet gevonden. Validatie overgeslagen.")
     _schema = None
 
 def validate_xml(xml_string):
@@ -48,27 +82,26 @@ def validate_xml(xml_string):
         _schema.assertValid(etree.fromstring(xml_string.encode('utf-8')))
         return True
     except Exception as e:
-        print(f"XSD Validatie fout: {e}")
+        logger.error(f"XSD Validatie fout: {e}")
         return False
 
+# --- Core Functions ---
 def is_alive(host, port, timeout=2):
     try:
-        ip = socket.getaddrinfo(host, port, socket.AF_INET)[0][4][0]
+        # Resolve address to handle both hostnames and IPs
+        addr_info = socket.getaddrinfo(host, port, socket.AF_INET)
+        if not addr_info:
+            return False
+        ip = addr_info[0][4][0]
+        
+        # Security check: only private IPs allowed
         if not ipaddress.ip_address(ip).is_private:
             return False
+            
         with socket.create_connection((host, port), timeout=timeout):
             return True
-    except (socket.timeout, ConnectionRefusedError, OSError):
+    except (socket.timeout, ConnectionRefusedError, OSError, socket.gaierror):
         return False
-
-
-def all_alive(targets):
-    failed = [f"{host}:{port}" for host, port in targets if not is_alive(host, port)]
-    if failed:
-        print(f"[DOWN] {SYSTEM_NAME} niet bereikbaar: {', '.join(failed)}")
-        return False
-    return True
-
 
 def build_heartbeat_xml(system_name, status, uptime):
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -88,80 +121,121 @@ def build_heartbeat_xml(system_name, status, uptime):
 
     return ET.tostring(message, encoding='unicode')
 
-
-def connect_rabbitmq():
+# --- Publisher Thread ---
+def publisher_worker():
     credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
-    while True:
+    connection = None
+    channel = None
+
+    def connect():
+        while running:
+            try:
+                conn = pika.BlockingConnection(
+                    pika.ConnectionParameters(host=RABBITMQ_HOST, virtual_host=RABBITMQ_VHOST, credentials=credentials)
+                )
+                chan = conn.channel()
+                chan.queue_declare(queue="heartbeat", durable=True)
+                logger.info("Verbonden met RabbitMQ")
+                return conn, chan
+            except pika.exceptions.AMQPConnectionError:
+                logger.error("RabbitMQ niet bereikbaar, opnieuw proberen in 5 sec")
+                time.sleep(5)
+        return None, None
+
+    connection, channel = connect()
+
+    while running or not msg_queue.empty():
         try:
-            connection = pika.BlockingConnection(
-                pika.ConnectionParameters(host=RABBITMQ_HOST, virtual_host=RABBITMQ_VHOST, credentials=credentials)
-            )
-            channel = connection.channel()
-            channel.queue_declare(queue="heartbeat", durable=True)
-            print("Verbonden met RabbitMQ")
-            return connection, channel
-        except pika.exceptions.AMQPConnectionError:
-            print("RabbitMQ niet bereikbaar, opnieuw proberen in 5 sec")
-            time.sleep(5)
+            # Wait for a message with a timeout so we can check 'running' flag
+            xml = msg_queue.get(timeout=1)
+            
+            try:
+                if channel and channel.is_open:
+                    channel.basic_publish(
+                        exchange="",
+                        routing_key="heartbeat",
+                        body=xml.encode('utf-8'),
+                        properties=pika.BasicProperties(delivery_mode=2)
+                    )
+                else:
+                    raise pika.exceptions.AMQPError("Connection/Channel not available")
+            except (pika.exceptions.AMQPError, pika.exceptions.ChannelClosedByBroker):
+                logger.error("RabbitMQ verbinding verloren, opnieuw verbinden")
+                if connection:
+                    try:
+                        connection.close()
+                    except:
+                        pass
+                connection, channel = connect()
+                if channel:
+                    channel.basic_publish(
+                        exchange="",
+                        routing_key="heartbeat",
+                        body=xml.encode('utf-8'),
+                        properties=pika.BasicProperties(delivery_mode=2)
+                    )
+            
+            msg_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            logger.error(f"Onverwachte fout in publisher thread: {e}")
 
+    if connection and connection.is_open:
+        connection.close()
 
-def publish(channel, xml):
-    channel.basic_publish(
-        exchange="",
-        routing_key="heartbeat",
-        body=xml.encode('utf-8'),
-        properties=pika.BasicProperties(delivery_mode=2)
-    )
+# --- Signal Handling ---
+def handle_sigterm(signum, frame):
+    global running
+    logger.info("SIGTERM ontvangen. Bezig met netjes afsluiten...")
+    running = False
+    
+    # Send final "offline" heartbeat as requested for graceful shutdown notification
+    uptime_seconds = int(time.monotonic() - alive_since) if alive_since else 0
+    xml = build_heartbeat_xml(SYSTEM_NAME, "offline", uptime_seconds)
+    
+    if validate_xml(xml):
+        msg_queue.put(xml)
+    
+    # Wait for the publisher to clear the final message before exiting
+    # K8s will eventually SIGKILL us if this takes too long (grace period)
+    msg_queue.join()
+    sys.exit(0)
 
+signal.signal(signal.SIGTERM, handle_sigterm)
 
-print(f"Sidecar gestart voor systeem: {SYSTEM_NAME}")
-print(f"Controleert: {', '.join(f'{h}:{p}' for h, p in TARGETS)}")
+# --- Main Execution ---
+logger.info(f"Sidecar gestart voor systeem: {SYSTEM_NAME}")
+logger.info(f"Controleert: {', '.join(f'{h}:{p}' for h, p in TARGETS)}")
 
-connection, channel = connect_rabbitmq()
+pub_thread = threading.Thread(target=publisher_worker, daemon=True)
+pub_thread.start()
 
-while True:
+while running:
     start_time = time.monotonic()
-    is_offline_heartbeat = False
-    if all_alive(TARGETS):
+    
+    failed_targets = [f"{host}:{port}" for host, port in TARGETS if not is_alive(host, port)]
+    
+    if not failed_targets:
         if alive_since is None:
             alive_since = time.monotonic()
-            offline_notified = False
-            try:
-                os.remove(OFFLINE_FLAG_FILE)
-            except FileNotFoundError:
-                pass
-            except OSError as e:
-                print(f"Waarschuwing: Kon vlagbestand niet verwijderen: {e}")
+            logger.info("Alle targets bereikbaar. Systeem is ONLINE.")
+        
         uptime_seconds = int(time.monotonic() - alive_since)
         xml = build_heartbeat_xml(SYSTEM_NAME, "online", uptime_seconds)
-        should_publish = True
+        
+        if validate_xml(xml):
+            # Non-blocking: put message in queue and continue loop immediately
+            msg_queue.put(xml)
     else:
-        alive_since = None
-        if not offline_notified:
-            xml = build_heartbeat_xml(SYSTEM_NAME, "offline", 0)
-            should_publish = True
-            is_offline_heartbeat = True
+        if alive_since is not None:
+            logger.error(f"[DOWN] {SYSTEM_NAME} niet bereikbaar: {', '.join(failed_targets)}")
+            alive_since = None
         else:
-            should_publish = False
+            # Still down: log locally but do not send XML to RabbitMQ (Dead Man's Switch)
+            logger.error(f"[STILL DOWN] Wacht op herstel: {', '.join(failed_targets)}")
 
-    if should_publish and validate_xml(xml):
-        try:
-            publish(channel, xml)
-            if is_offline_heartbeat:
-                offline_notified = True
-                try:
-                    with open(OFFLINE_FLAG_FILE, 'w') as f:
-                        f.write('notified')
-                except OSError as e:
-                    print(f"Waarschuwing: Kon offline vlag niet schrijven: {e}")
-        except pika.exceptions.AMQPError:
-            print("RabbitMQ verbinding verloren, opnieuw verbinden")
-            try:
-                connection.close()
-            except Exception as e:
-                print(f"Fout bij sluiten van RabbitMQ verbinding: {e}")
-            connection, channel = connect_rabbitmq()
-
+    # Ensure strict 1-second interval
     work_duration = time.monotonic() - start_time
     if work_duration < 1:
         time.sleep(1 - work_duration)
