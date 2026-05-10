@@ -99,7 +99,7 @@ def is_alive(host, port, timeout=2):
         if not ipaddress.ip_address(ip).is_private:
             return False
             
-        with socket.create_connection((host, port), timeout=timeout):
+        with socket.create_connection((ip, port), timeout=timeout):
             return True
     except (socket.timeout, ConnectionRefusedError, OSError, socket.gaierror):
         return False
