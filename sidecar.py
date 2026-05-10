@@ -139,7 +139,7 @@ def publisher_worker():
                 return conn, chan
             except pika.exceptions.AMQPConnectionError:
                 logger.error("RabbitMQ niet bereikbaar, opnieuw proberen in 5 sec")
-                time.sleep(5)
+                threading.Event().wait(5)
         return None, None
 
     connection, channel = connect()
@@ -164,7 +164,7 @@ def publisher_worker():
                 if connection:
                     try:
                         connection.close()
-                    except:
+                    except Exception:
                         pass
                 connection, channel = connect()
                 if channel:
@@ -179,7 +179,7 @@ def publisher_worker():
         except queue.Empty:
             continue
         except Exception as e:
-            logger.error(f"Onverwachte fout in publisher thread: {e}")
+            logger.error(f"Onverwachte fout in publisher thread: {e}", exc_info=True)
 
     if connection and connection.is_open:
         connection.close()
