@@ -18,7 +18,7 @@ from lxml import etree
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_entry = {
-            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": datetime.fromtimestamp(record.created, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "level": record.levelname,
             "message": record.getMessage(),
             "system": os.environ.get("SYSTEM_NAME", "unknown")
