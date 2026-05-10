@@ -35,13 +35,18 @@ jobs:
           SubElement(header, "type").text = "heartbeat"
           SubElement(header, "version").text = "2.0"
           body = SubElement(message, "body")
-          SubElement(body, "status").text = "online"
+          status_elem = SubElement(body, "status")
+          status_elem.text = "online"
           SubElement(body, "uptime").text = "1"
           xml_string = tostring(message, encoding="unicode")
+          schema.assertValid(etree.fromstring(xml_string.encode("utf-8")))
 
-          xml_doc = etree.fromstring(xml_string.encode("utf-8"))
-          schema.assertValid(xml_doc)
-          print("XSD validation passed.")
+          # Also test 'offline' status which is now used for SIGTERM
+          status_elem.text = "offline"
+          xml_string_offline = tostring(message, encoding="unicode")
+          schema.assertValid(etree.fromstring(xml_string_offline.encode("utf-8")))
+
+          print("XSD validation passed for both online and offline states.")
           EOF
 
       - name: Start test environment
