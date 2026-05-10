@@ -200,11 +200,6 @@ def handle_sigterm(signum, frame):
     
     # Stop the main loops and let threads exit after processing remaining messages
     running = False
-    
-    # Wait for the publisher to clear the final message before exiting
-    # K8s will eventually SIGKILL us if this takes too long (grace period)
-    msg_queue.join()
-    sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_sigterm)
 
