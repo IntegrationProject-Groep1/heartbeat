@@ -149,7 +149,10 @@ def publisher_worker():
         try:
             # Wait for a message with a timeout so we can check 'running' flag
             xml = msg_queue.get(timeout=1)
-            
+        except queue.Empty:
+            continue
+
+        try:
             try:
                 if channel and channel.is_open:
                     channel.basic_publish(
@@ -175,12 +178,10 @@ def publisher_worker():
                         body=xml.encode('utf-8'),
                         properties=pika.BasicProperties(delivery_mode=2)
                     )
-            
-            msg_queue.task_done()
-        except queue.Empty:
-            continue
         except Exception as e:
             logger.error(f"Onverwachte fout in publisher thread: {e}", exc_info=True)
+        finally:
+            msg_queue.task_done()
 
     if connection and connection.is_open:
         connection.close()
@@ -189,7 +190,6 @@ def publisher_worker():
 def handle_sigterm(signum, frame):
     global running
     logger.info("SIGTERM ontvangen. Bezig met netjes afsluiten...")
-    running = False
     
     # Send final "offline" heartbeat as requested for graceful shutdown notification
     uptime_seconds = int(time.monotonic() - alive_since) if alive_since else 0
@@ -197,6 +197,9 @@ def handle_sigterm(signum, frame):
     
     if validate_xml(xml):
         msg_queue.put(xml)
+    
+    # Stop the main loops and let threads exit after processing remaining messages
+    running = False
     
     # Wait for the publisher to clear the final message before exiting
     # K8s will eventually SIGKILL us if this takes too long (grace period)
